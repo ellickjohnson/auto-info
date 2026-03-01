@@ -1,0 +1,65 @@
+services:
+  # PostgreSQL with TimescaleDB
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: auto-info-db
+    environment:
+      POSTGRES_USER: autoinfo
+      POSTGRES_PASSWORD: autopass123
+      POSTGRES_DB: autoinfo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoinfo -d autoinfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - auto-info-network
+
+  # API Backend
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: auto-info-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://autoinfo:autopass123@postgres:5432/autoinfo
+      JWT_SECRET: change-this-in-production-use-secure-random-string
+      JWT_EXPIRES_IN: 7d
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - auto-info-network
+    restart: unless-stopped
+
+  # Web Dashboard
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: auto-info-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+    networks:
+      - auto-info-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  auto-info-network:
+    driver: bridge
